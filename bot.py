@@ -1,16 +1,16 @@
 import os
 import anthropic
 from telegram import Update
-from telegram.ext import Application, MessageHandler, filters, ContextTypes
+from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTypes
 
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
 
 SYSTEM_PROMPT = """Ты — AI-помощник администратора студии эпиляции Darya Sugarya (Москва, Таганская).
-Твоя задача: когда администратор Виктория присылает тебе сообщение от клиента, ты предлагаешь готовый текст ответа.
+Твоя задача: когда администратор Виктория присылает сообщение от клиента, предложи готовый текст ответа.
 
-ВАЖНЫЕ ПРАВИЛА:
-- Отвечай ТОЛЬКО готовым текстом для отправки клиенту
+ПРАВИЛА:
+- Отвечай ТОЛЬКО готовым текстом для клиента
 - Тон: дружелюбный, тёплый, профессиональный
 - Никогда не придумывай цены
 - При жалобах: сочувствие + предложить переделать бесплатно у Дарьи
@@ -57,13 +57,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ Ошибка: {str(e)}")
 
 
-async def main():
-    app = Application.builder().token(TELEGRAM_TOKEN).build()
+def main():
+    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     print("Бот запущен!")
-    await app.run_polling()
+    app.run_polling(drop_pending_updates=True)
 
 
 if __name__ == "__main__":
-    import asyncio
-    asyncio.run(main())
+    main()
