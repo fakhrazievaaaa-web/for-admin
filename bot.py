@@ -11,7 +11,7 @@ TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
 ADMIN_CHAT_ID = os.environ.get("ADMIN_CHAT_ID")
 OWNER_CHAT_ID = os.environ.get("OWNER_CHAT_ID")
-DATABASE_URL = os.environ.get("DATABASE_URL")
+DATABASE_URL = os.environ.get("DATABASE_PUBLIC_URL") or os.environ.get("DATABASE_URL")
 
 MOSCOW_TZ = pytz.timezone("Europe/Moscow")
 
@@ -54,10 +54,10 @@ BASE_PROMPT = """Ты — помощник администратора студ
 
 
 def get_conn():
-    db_url = DATABASE_URL
-    if db_url and db_url.startswith("postgresql://"):
-        db_url = db_url.replace("postgresql://", "postgres://", 1)
-    return psycopg2.connect(db_url, sslmode="require", connect_timeout=10)
+    url = DATABASE_URL
+    if url and url.startswith("postgresql://"):
+        url = url.replace("postgresql://", "postgres://", 1)
+    return psycopg2.connect(url, connect_timeout=10)
 
 
 def init_db():
@@ -171,12 +171,12 @@ def make_yesno_keyboard(task_key):
     ])
 
 
-EVENING_ORDER = ["yclients_done", "checks_done", "integrations_ok", "systems_ok"]
+EVENING_ORDER = ["yclients_done", "checks_done", "chatpush_ok", "systems_ok"]
 EVENING_QUESTIONS = {
-    "yclients_done": "Все клиенты пробиты в YClients?",
+    "yclients_done": "Все клиенты пробиты в YClients за сегодня?",
     "checks_done": "Чеки сверены с мастером?",
-    "integrations_ok": "Интеграции работают корректно?",
-    "systems_ok": "Все системы работают (Telegram, WhatsApp, Max)?",
+    "chatpush_ok": "В ChatPush сегодня приходили уведомления из всех мессенджеров (WhatsApp, VK, Telegram, Max)?",
+    "systems_ok": "Все системы работают корректно (YClients, Telegram, WhatsApp, Max)?",
 }
 
 
@@ -212,7 +212,7 @@ async def send_daily_report(app):
         text += "🔧 Вечерний чеклист:\n"
         text += f"{format_status(report, 'yclients_done')} Все клиенты пробиты в YClients\n"
         text += f"{format_status(report, 'checks_done')} Чеки сверены\n"
-        text += f"{format_status(report, 'integrations_ok')} Интеграции работают\n"
+        text += f"{format_status(report, 'chatpush_ok')} ChatPush — уведомления из всех мессенджеров\n"
         text += f"{format_status(report, 'systems_ok')} Все системы работают\n"
         issues = [v["issue"] for v in report.values() if v.get("issue")]
         if issues:
@@ -250,18 +250,24 @@ async def schedule_reminders(app):
             for th, tm, rkey, task_key, text in tasks:
                 if h == th and m == tm and last_sent.get(rkey) != key_time:
                     last_sent[rkey] = key_time
-                    await app.bot.send_message(
-                        chat_id=ADMIN_CHAT_ID, text=text,
-                        reply_markup=make_keyboard(task_key))
+                    try:
+                        await app.bot.send_message(
+                            chat_id=ADMIN_CHAT_ID, text=text,
+                            reply_markup=make_keyboard(task_key))
+                    except Exception as e:
+                        print(f"Ошибка напоминания: {e}")
 
             if h == 21 and m == 30 and last_sent.get("r5") != key_time:
                 last_sent["r5"] = key_time
-                await app.bot.send_message(chat_id=ADMIN_CHAT_ID, text="🌙 Вечерний отчёт!")
-                await asyncio.sleep(2)
-                await app.bot.send_message(
-                    chat_id=ADMIN_CHAT_ID,
-                    text=f"❓ {EVENING_QUESTIONS['yclients_done']}",
-                    reply_markup=make_yesno_keyboard("yclients_done"))
+                try:
+                    await app.bot.send_message(chat_id=ADMIN_CHAT_ID, text="🌙 Вечерний отчёт!")
+                    await asyncio.sleep(2)
+                    await app.bot.send_message(
+                        chat_id=ADMIN_CHAT_ID,
+                        text=f"❓ {EVENING_QUESTIONS['yclients_done']}",
+                        reply_markup=make_yesno_keyboard("yclients_done"))
+                except Exception as e:
+                    print(f"Ошибка вечернего опроса: {e}")
 
             elif h == 22 and m == 0 and last_sent.get("r6") != key_time:
                 last_sent["r6"] = key_time
